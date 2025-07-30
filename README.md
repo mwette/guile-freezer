@@ -14,8 +14,9 @@ $ gcc -c myscript.c
 $ gcc -o myprog myprog.c myscript.o myscript.xd/*.o -lguile ...
 ```
 
-## install example
+## install example, if your install is in /usr/local/
 ```
-# cp scripts/freeze.scm /usr/local/share/guile/site/
+# mkdir -p /usr/local/share/guile/site/scripts
+# cp -r scripts/freeze.scm /usr/local/share/guile/site/scripts/
 ```
 
