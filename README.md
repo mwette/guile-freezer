@@ -13,6 +13,7 @@ $ guild freeze myscript.scm
 $ gcc -c myscript.c
 $ gcc -o myprog myprog.c myscript.o myscript.xd/*.o -lguile ...
 ```
+where `myprog.c` calls `loadem()'
 
 ## install example, if your install is in /usr/local/
 ```
