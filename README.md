@@ -2,7 +2,10 @@
 Guile-freezer is a guild script to convert a script and dependent modules 
 to objects to link into a C program linked with libguile.
 
-This is in development: alpha release
+# Notes
+
++ This is in development: alpha release
++ Only x86_64: if you want others check Omap and Bmap in freeze.scm
 
 ## usage
 ```
