@@ -18,6 +18,6 @@ where `myprog.c` calls `loadem()'
 ## install example, if your install is in /usr/local/
 ```
 # mkdir -p /usr/local/share/guile/site/scripts
-# cp -r scripts/freeze.scm /usr/local/share/guile/site/scripts/
+# cp scripts/freeze.scm /usr/local/share/guile/site/scripts/
 ```
 
