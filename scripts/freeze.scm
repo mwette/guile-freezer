@@ -30,7 +30,7 @@
   #:use-module ((srfi srfi-1)
                 #:select (fold fold-right last every remove lset-union))
   #:use-module (srfi srfi-37)
-  #:version (2 03 0))
+  #:version (0 0 1))
 
 (use-modules (ice-9 pretty-print))
 (define pp pretty-print)
@@ -151,6 +151,9 @@ Note that license restrictions may apply.
           (`(use-modules . ,spks) (loop (fold spec-dep deps spks) (read port)))
           (__ (loop deps (read port))))))))
 
+;; @deffn {Procedure} xxx modules =>
+;; Generate a dictionary of mod-spec to go-filename.
+;; @end deffn
 (define (get-dict modules)
   (define (mod-entry mod-spec)
     (cons mod-spec (probe-file (module-filename mod-spec))))
@@ -164,6 +167,7 @@ Note that license restrictions may apply.
       (let ((entry (mod-entry (car todo))))
         (loop (cons entry dict) (append (cdr entry) todo)))))))
 
+;; need doc
 (define (tsort filed filel)
   (define (covered? deps done) (every (lambda (e) (member e done)) deps))
   (let loop ((done '()) (hd '()) (tl filel))
