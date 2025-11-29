@@ -26,7 +26,7 @@
   
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
-  #:use-module ((system base compile) #:select (compiled-file-name))
+  #:use-module ((system base compile) #:select (compiled-file-name compile-file))
   #:use-module ((srfi srfi-1)
                 #:select (fold fold-right last every remove lset-union))
   #:use-module (srfi srfi-37)
@@ -35,6 +35,13 @@
 (use-modules (ice-9 pretty-print))
 (define pp pretty-print)
 (define (sf fmt . args) (apply simple-format #t fmt args))
+
+;; (system base ck) is ref'd in srfi-9.scm but does not exist.
+;; We screen these out.  Another approach is to just not include
+;; modules that are not found.
+#;(define bogus-modules
+  '((system base ck)))
+(define bogus-modules '())
 
 (define %summary
   "Generate binary version of non-Guile modules.")
@@ -62,6 +69,7 @@
   (simple-format #t "Usage: guild freeze [OPTIONS] FILE
 Generate a frozen script.
 
+  -s, --include-sys     include system files (not working)
   -h, --help            print this help message
   --version             print version number
 
@@ -73,10 +81,13 @@ Note that license restrictions may apply.
   ;; (option (char str) req-arg? opt-arg? proc)
   (list
    (option '(#\h "help") #f #f
-           (lambda (opt name arg opts files)
-             (values (acons 'help #t opts) files)))
+           (lambda (opt name arg opts)
+             (acons 'help #t opts)))
+   (option '(#\s "include-sys") #f #f
+           (lambda (opt name arg opts)
+             (acons 'include-sys #t opts)))
    (option '("version") #f #f
-           (lambda (opt name arg opts files)
+           (lambda (opt name arg opts)
              (show-version) (exit 0)))
    ))
 
@@ -84,13 +95,14 @@ Note that license restrictions may apply.
 (define (parse-args args)
   (args-fold args
              options
-             (lambda (opt name arg files opts)
-               (fail "unrecognized option: ~S" name)
-               (exit 1))
-             (lambda (file opts files)
-               (values opts (cons file files)))
-             `() '()))
+             (lambda (opt name arg opts)
+               (fail "unrecognized option: ~S" name))
+             (lambda (name opts)
+               (if (assq-ref opts 'file) (fail "only one file"))
+               (acons 'file name opts))
+             `()))
 
+;; ----------------------------------------------------------------------------
 
 (define instccachedir (assq-ref %guile-build-info 'ccachedir))
 (define userccachedir %compile-fallback-path)
@@ -102,6 +114,7 @@ Note that license restrictions may apply.
 
 (define *name* (make-parameter "foo"))
 (define (*xd*) (string-append (*name*) ".xd"))
+(define *include-sys* (make-parameter #f))
 
 ;; ----------------------------------------------------------------------------
 
@@ -131,7 +144,9 @@ Note that license restrictions may apply.
     (match tail
       ('() deps)
       (`(#:use-module ,spec . ,rest)
-       (loop (spec-dep spec deps) rest))
+       (if (member spec bogus-modules)
+           (loop deps rest)
+           (loop (spec-dep spec deps) rest)))
       (`(#:autoload ,spec ,procs . ,rest)
        (loop (spec-dep spec deps) rest))
       ((key val . rest)
@@ -185,37 +200,40 @@ Note that license restrictions may apply.
   (false-if-exception (canonicalize-path path)))
 
 (define (search-compiled-path path)
+  (define (sans-scm path)
+    (if (string=? ".scm" (string-take-right path 4))
+        (string-drop-right path 4)))
   (define (try head tail ext)
     (let ((path (string-append head "/" tail ext)))
       (and (access? path R_OK) path)))
-  (or (try instccachedir path ".go")
+  (or (try instccachedir (sans-scm path) ".go")
       (try userccachedir path ".scm.go")
-      (and=> (canize-path (string-append path ".scm"))
-             (lambda (path) (try userccachedir path ".go")))
+      (and=> (canize-path path)
+        (lambda (path) (try userccachedir path ".go")))
       (error (string-append path " .go file not found"))))
 
 ;; script -> ((scm-file . go-path) (scm-file . go-path) ...)
 (define (find-gos script)
   (let* (
-         ;; get the boot-9 files : (needed anymore?)
+         ;; get the boot-9 files : (needed?)
          (bootd (get-dict '((ice-9 boot-9))))
-         (boots (apply lset-union equal? bootd))
-         (bootseq (reverse (tsort bootd boots)))
+         (bootl (apply lset-union equal? bootd))
+         (bootseq (reverse (tsort bootd bootl)))
          ;;
-         (depd (get-dict (list '(mydemo1))))
-         (all (apply lset-union equal? depd))
-         (seq (reverse (tsort depd all)))
+         (depd (get-dict (probe-file script)))
+         (depl (apply lset-union equal? depd))
+         (depseq (reverse (tsort depd depl)))
+         (depseq (remove (lambda (m) (member m bootl)) depseq))
          ;;
-         (userseq (remove (lambda (e) (member e boots)) seq))
-         (seq (append bootseq userseq))
+         (seq (append bootseq depseq))
          ;;
-         (scmfl (map
-                 (lambda (m) (string-append
-                              (string-join (map symbol->string m) "/") ".scm"))
-                 seq))
-         (basel (map (lambda (m) (string-join (map symbol->string m) "/")) seq))
-         (gopl (map search-compiled-path basel))
-         (inc-sys-gos #f))
+         (srcfl (fold
+                 (lambda (m l)
+                   (let ((base (string-join (map symbol->string m) "/")))
+                     (cons (string-append base ".scm") l)))
+                 (list script) seq))
+         (gopl (map search-compiled-path srcfl))
+         (inc-sys-gos (*include-sys*)))
     (fold-right
      (lambda (scmf gop seed)
        (if (or
@@ -223,7 +241,7 @@ Note that license restrictions may apply.
             (not (string-prefix? instccachedir gop)))
            (cons (cons scmf gop) seed)
            seed))
-     '() scmfl gopl)))
+     '() srcfl gopl)))
 
 ;; ----------------------------------------------------------------------------
 
@@ -325,12 +343,25 @@ void loadem() {
 (define code-part3
   "  return;\n}\n")
 
+(define code-part4
+  "
+static void kont(void *closure, int argc, char **argv) {
+  loadem();
+}
+
+int main(int argc, char **argv) {
+  scm_boot_guile (argc, argv, kont, 0);
+  return 0;
+}
+\n")
+
 ;; @deffn {Procedure} gen-ci xpairs
 ;; Generage a C file to load .go files from memory.
 ;; @end deffn
 (define (gen-ci xpairs)
-  (let ((sport (open-output-file (string-append (*name*) ".c"))))
-    (simple-format sport "/* ~a.c\n */\n\n#include <libguile.h>\n\n" (*name*))
+  (let* ((name (*name*))
+         (sport (open-output-file (string-append name ".c"))))
+    (simple-format sport "/* ~a.c\n */\n\n#include <libguile.h>\n\n" name)
     (for-each
      (lambda (xpair)
        (let* ((ref (car xpair))
@@ -349,21 +380,25 @@ void loadem() {
          (display code-part2b sport)))
      xpairs)
     (display code-part3 sport)
+    (display code-part4 sport)
+    (format sport "//  gcc -o ~a `pkg-config --cflags guile-3.0` ~a.c \\\n"
+            name name)
+    (format sport "//    ~a.xd/*.o `pkg-config --libs guile-3.0`\n" name)
     (close-port sport)))
 
 
 ;; ----------------------------------------------------------------------------
 
 (define (main . args)
-  (call-with-values (lambda () (parse-args args))
-    (lambda (opts files)
-      (when (or (assq-ref opts 'help) (null? files)) (show-usage) (exit 0))
-      (let* ((namefile (last files))
-             (base (basename namefile ".scm")))
-        (*name* base))
-      (for-each
-       (lambda (file) (gen-ci (gen-xos (find-gos file))))
-       (reverse files))))
-  (exit 0))
+  (define opts (parse-args args))
+  (when (or (assq-ref opts 'help) (not (assq-ref opts 'file)))
+    (show-usage) (exit 0))
+  (when (assq-ref opts 'include-sys)
+    (*include-sys* #t))
+  (let* ((script (assq-ref opts 'file))
+         (base (basename script ".scm")))
+    (*name* base)
+    (gen-ci (gen-xos (find-gos script))))
+  0)
 
 ;; --- last line ---
