@@ -11,12 +11,15 @@ Usage:
 ```
 
 `myscript.c` will load .go's from the objects you see in `myscript.xd`.
-The default behavior of the freezer is to no include Guile native .gos.
+The default behavior of the freezer is to not include Guile native .gos.
 To add these, one would use the `-s` flag, as:
 
 ```
   $ guild freeze -s myscript.scm
 ```
+
+(The above statement is not quite right.  It will not include boot-9 deps.
+This needs to be fixed.)
 
 But this does not work.  Ideally one would be able to generate a
 single binary with no other dependencies.  However, libguile loads
