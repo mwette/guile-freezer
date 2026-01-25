@@ -28,7 +28,7 @@
   #:use-module (ice-9 rdelim)
   #:use-module ((system base compile) #:select (compiled-file-name compile-file))
   #:use-module ((srfi srfi-1)
-                #:select (fold fold-right last every remove lset-union))
+                #:select (any fold fold-right last every remove lset-union))
   #:use-module (srfi srfi-37)
   #:version (0 0 1))
 
@@ -211,6 +211,13 @@ Note that license restrictions may apply.
       (try userccachedir path ".go")
       (and=> (canize-path path)
         (lambda (path) (try userccachedir path ".go")))
+      (any (lambda (folder)
+             (or (try folder (sans-scm path) ".go")
+                 (and=> (canize-path (sans-scm path))
+                        (lambda (path) (try folder path ".go")))))
+           (string-split (or (getenv "GUILE_LOAD_COMPILED_PATH")
+                             "")
+                         #\:))
       (error (string-append path " .go file not found"))))
 
 ;; script -> ((scm-file . go-path) (scm-file . go-path) ...)
