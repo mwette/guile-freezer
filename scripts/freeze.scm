@@ -207,7 +207,7 @@ Note that license restrictions may apply.
     (let ((path (string-append head "/" tail ext)))
       (and (access? path R_OK) path)))
   (or (try instccachedir (sans-scm path) ".go")
-      (try userccachedir path ".scm.go")
+      (try userccachedir path ".go")
       (and=> (canize-path path)
         (lambda (path) (try userccachedir path ".go")))
       (error (string-append path " .go file not found"))))
