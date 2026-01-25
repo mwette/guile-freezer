@@ -26,7 +26,8 @@
   
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
-  #:use-module ((system base compile) #:select (compiled-file-name compile-file))
+  #:use-module ((system base compile) 
+               #:select (compiled-file-name compile-file))
   #:use-module ((srfi srfi-1)
                 #:select (fold fold-right last every remove lset-union))
   #:use-module (srfi srfi-37)
@@ -35,13 +36,6 @@
 (use-modules (ice-9 pretty-print))
 (define pp pretty-print)
 (define (sf fmt . args) (apply simple-format #t fmt args))
-
-;; (system base ck) is ref'd in srfi-9.scm but does not exist.
-;; We screen these out.  Another approach is to just not include
-;; modules that are not found.
-#;(define bogus-modules
-  '((system base ck)))
-(define bogus-modules '())
 
 (define %summary
   "Generate binary version of non-Guile modules.")
@@ -110,6 +104,7 @@ Note that license restrictions may apply.
 (define ignore-me
   '((system syntax internal)
     (compile compile-file)
+    (ice-9 ports internal)
     (guile-user)))
 
 (define *name* (make-parameter "foo"))
@@ -144,9 +139,7 @@ Note that license restrictions may apply.
     (match tail
       ('() deps)
       (`(#:use-module ,spec . ,rest)
-       (if (member spec bogus-modules)
-           (loop deps rest)
-           (loop (spec-dep spec deps) rest)))
+        (loop (spec-dep spec deps) rest))
       (`(#:autoload ,spec ,procs . ,rest)
        (loop (spec-dep spec deps) rest))
       ((key val . rest)
@@ -171,7 +164,9 @@ Note that license restrictions may apply.
 ;; @end deffn
 (define (get-dict modules)
   (define (mod-entry mod-spec)
-    (cons mod-spec (probe-file (module-filename mod-spec))))
+    (let ((filename (module-filename mod-spec)))
+      (unless filename (error "freezer: module code not found" mod-spec))
+      (cons mod-spec (probe-file (module-filename mod-spec)))))
   (let loop ((dict '()) (todo modules))
     (cond
      ((null? todo)
@@ -215,7 +210,7 @@ Note that license restrictions may apply.
 ;; script -> ((scm-file . go-path) (scm-file . go-path) ...)
 (define (find-gos script)
   (let* (
-         ;; get the boot-9 files : (needed?)
+         ;; collect the startup files 
          (bootd (get-dict '((ice-9 boot-9))))
          (bootl (apply lset-union equal? bootd))
          (bootseq (reverse (tsort bootd bootl)))
@@ -233,11 +228,11 @@ Note that license restrictions may apply.
                      (cons (string-append base ".scm") l)))
                  (list script) seq))
          (gopl (map search-compiled-path srcfl))
-         (inc-sys-gos (*include-sys*)))
+         (include-sys-gos (*include-sys*)))
     (fold-right
      (lambda (scmf gop seed)
        (if (or
-            inc-sys-gos
+            include-sys-gos
             (not (string-prefix? instccachedir gop)))
            (cons (cons scmf gop) seed)
            seed))
