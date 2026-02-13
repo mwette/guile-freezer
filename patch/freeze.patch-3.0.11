@@ -1,0 +1,33 @@
+--- libguile/init.h-orig	2026-02-12 13:23:05.664220902 -0800
++++ libguile/init.h	2026-02-12 13:23:35.052596822 -0800
+@@ -39,5 +39,6 @@
+ SCM_INTERNAL void scm_i_init_guile (void *base);
+ 
+ SCM_API void scm_load_startup_files (void);
++SCM_API void scm_load_startup_using (void (*)(void));
+ 
+ #endif  /* SCM_INIT_H */
+--- libguile/init.c-orig	2026-01-27 19:41:13.565073877 -0800
++++ libguile/init.c	2026-02-12 14:25:08.170989149 -0800
+@@ -350,6 +350,12 @@
+   scm_with_guile (really_cleanup_for_exit, NULL);
+ }
+ 
++static void (*load_startup_files)(void) =  scm_load_startup_files;
++
++SCM_API void scm_load_startup_using(void (*loader)(void)) {
++  load_startup_files = loader;
++}
++
+ void
+ scm_i_init_guile (void *base)
+ {
+@@ -504,7 +510,7 @@
+   scm_init_extensions ();
+ 
+   atexit (cleanup_for_exit);
+-  scm_load_startup_files ();
++  (*load_startup_files)();
+   scm_init_load_should_auto_compile ();
+ 
+   /* Capture the dynamic state after loading boot-9, so that new threads end up
