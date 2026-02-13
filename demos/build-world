@@ -1,0 +1,13 @@
+#!/bin/sh
+
+GUILEDIR=/opt/guile-rel/3.0.11-fzr
+PATH=$GUILEDIR/bin:$PATH
+PKG_CONFIG_PATH=$GUILEDIR/lib/pkgconfig:$PKG_CONFIG_PATH
+GUILE_LOAD_PATH=`pwd`/..:$GUILE_LOAD_PATH
+guild compile world.scm
+guild freeze -s world.scm
+gcc -g -o world \
+	`pkg-config --cflags guile-3.0` \
+	world.c world.xd/*.o \
+	-Xlinker --rpath=$GUILEDIR/lib \
+	`pkg-config --libs guile-3.0`
