@@ -80,6 +80,9 @@ Note that license restrictions may apply.
    (option '(#\s "include-sys") #f #f
            (lambda (opt name arg opts)
              (acons 'include-sys #t opts)))
+   (option '(#\i "interactive") #f #f
+           (lambda (opt name arg opts)
+             (acons 'interactive #t opts)))
    (option '("version") #f #f
            (lambda (opt name arg opts)
              (show-version) (exit 0)))
@@ -109,7 +112,6 @@ Note that license restrictions may apply.
 
 (define *name* (make-parameter "foo"))
 (define (*xd*) (string-append (*name*) ".xd"))
-(define *include-sys* (make-parameter #f))
 
 ;; ----------------------------------------------------------------------------
 
@@ -216,7 +218,7 @@ Note that license restrictions may apply.
       (error (string-append path " .go file not found"))))
 
 ;; script -> ((scm-file . go-path) (scm-file . go-path) ...)
-(define (find-gos script)
+(define* (find-gos script #:optional (options '()))
   (let* (
          ;; collect the startup files 
          (bootd (get-dict '((ice-9 boot-9))))
@@ -235,12 +237,11 @@ Note that license restrictions may apply.
                    (let ((base (string-join (map symbol->string m) "/")))
                      (cons (string-append base ".scm") l)))
                  (list script) seq))
-         (gopl (map search-compiled-path srcfl))
-         (include-sys-gos (*include-sys*)))
+         (gopl (map search-compiled-path srcfl)))
     (fold-right
      (lambda (scmf gop seed)
        (if (or
-            include-sys-gos
+            (assq-ref options 'include-sys)
             (not (string-prefix? instccachedir gop)))
            (cons (cons scmf gop) seed)
            seed))
@@ -313,7 +314,7 @@ Note that license restrictions may apply.
          (cons ref xbase)))
      go-refs go-paths)))
 
-(define code-part1 "
+(define code-part1a "
 #include <libguile.h>
 
 SCM scm_load_thunk_from_memory(SCM);
@@ -326,44 +327,37 @@ static SCM zcm_c_pointer_to_bytevector(void *pointer, size_t size) {
   mem = scm_pointer_to_bytevector(ptr, len, SCM_UNDEFINED, SCM_UNDEFINED); 
   return mem;
 }
+")
 
-void loadem() {
-  char *ptr, *end;
+(define load-header
+  "  char *ptr, *end;
   size_t siz;
   SCM mem, res, mod_init;\n\n")
 
-(define (code-part2a term)
+(define (gen-ptr+end term)
   (string-append
    (simple-format #f "  ptr = _binary_~a_go_start;\n" term)
    (simple-format #f "  end = _binary_~a_go_end;\n" term)))
 
-(define code-part2b
+(define load-calls
   "  siz = end - ptr;
   mem = zcm_c_pointer_to_bytevector (ptr, siz);
   mod_init = scm_load_thunk_from_memory(mem);
   res = scm_call_0(mod_init);\n\n")
 
-(define code-part3
-  "  return;\n}\n")
-
-(define code-part4
+(define code-part6
   "
-static void kont(void *closure, int argc, char **argv) {
-  loadem();
-}
-
-int main(int argc, char **argv) {
-  scm_boot_guile (argc, argv, kont, 0);
+  scm_boot_guile (argc, argv, local_main, 0);
   return 0;
-}
-\n")
+}\n\n")
 
 ;; @deffn {Procedure} gen-ci xpairs
 ;; Generage a C file to load .go files from memory.
 ;; @end deffn
-(define (gen-ci xpairs)
+(define* (gen-ci xpairs #:optional (options '()))
   (let* ((name (*name*))
-         (sport (open-output-file (string-append name ".c"))))
+         (sport (open-output-file (string-append name ".c")))
+         (boot9-pair (assoc "ice-9/boot-9.scm" xpairs)))
     (simple-format sport "/* ~a.c\n */\n\n#include <libguile.h>\n\n" name)
     (for-each
      (lambda (xpair)
@@ -374,16 +368,42 @@ int main(int argc, char **argv) {
          (simple-format sport "extern char _binary_~a_start[];\n" ebase)
          (simple-format sport "extern char _binary_~a_end[];\n" ebase)))
      xpairs)
-    (display code-part1 sport)
+    (newline sport)
+    ;;
+    (format sport "void loadem() {\n")
+    (display load-header sport)
     (for-each
      (lambda (xpair)
        (let ((ref (car xpair)) (xbase (cdr xpair)))
-         (simple-format sport "  /* ~a */\n" ref)
-         (display (code-part2a xbase) sport)
-         (display code-part2b sport)))
+         (unless (string=? ref "ice-9/boot-9.scm")
+           (simple-format sport "  /* ~a */\n" ref)
+           (display (gen-ptr+end xbase) sport)
+           (display load-calls sport))))
      xpairs)
-    (display code-part3 sport)
-    (display code-part4 sport)
+    (display "  return;\n}\n\n" sport)
+    ;;
+    (when (assq-ref options 'include-sys)
+      (format sport "void load_boot9() {\n")
+      (display load-header sport)
+      (let ((ref (car boot9-pair)) (xbase (cdr boot9-pair)))
+        (simple-format sport "  /* ~a */\n" ref)
+        (display (gen-ptr+end xbase) sport)
+        (display load-calls sport))
+      (display "  return;\n}\n\n" sport))
+    ;;
+    (display "static void local_main(void *data, int argc, char **argv) {\n"
+             sport)
+    (display "  loadem();\n" sport)
+    (if (assq-ref options 'interactive)
+        (display "  scm_shell(argc, argv);\n" sport))
+    (display "}\n\n" sport)
+    ;;
+    (display "int main(int argc, char **argv) {\n" sport)
+    (if (assq-ref options 'include-sys)
+        (display "  scm_load_startup_using(loadem);\n" sport))
+    (display "  scm_boot_guile (argc, argv, local_main, 0);\n" sport)
+    (display "  return 0;\n}\n\n" sport)
+    ;;
     (format sport "//  gcc -o ~a `pkg-config --cflags guile-3.0` ~a.c \\\n"
             name name)
     (format sport "//    ~a.xd/*.o `pkg-config --libs guile-3.0`\n" name)
@@ -396,12 +416,10 @@ int main(int argc, char **argv) {
   (define opts (parse-args args))
   (when (or (assq-ref opts 'help) (not (assq-ref opts 'file)))
     (show-usage) (exit 0))
-  (when (assq-ref opts 'include-sys)
-    (*include-sys* #t))
   (let* ((script (assq-ref opts 'file))
          (base (basename script ".scm")))
     (*name* base)
-    (gen-ci (gen-xos (find-gos script))))
+    (gen-ci (gen-xos (find-gos script opts)) opts))
   0)
 
 ;; --- last line ---

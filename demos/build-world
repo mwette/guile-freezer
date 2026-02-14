@@ -4,8 +4,10 @@ GUILEDIR=/opt/guile-rel/3.0.11-fzr
 PATH=$GUILEDIR/bin:$PATH
 PKG_CONFIG_PATH=$GUILEDIR/lib/pkgconfig:$PKG_CONFIG_PATH
 GUILE_LOAD_PATH=`pwd`/..:$GUILE_LOAD_PATH
+export PATH PKG_CONFIG_PATH GUILE_LOAD_PATh
 guild compile world.scm
-guild freeze -s world.scm
+guild freeze -s -i world.scm
+exit 0
 gcc -g -o world \
 	`pkg-config --cflags guile-3.0` \
 	world.c world.xd/*.o \
