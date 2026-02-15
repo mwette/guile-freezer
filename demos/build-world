@@ -1,15 +1,17 @@
 #!/bin/sh
 
-GUILEDIR=/opt/guile-rel/3.0.11-fzr
-PATH=$GUILEDIR/bin:$PATH
-PKG_CONFIG_PATH=$GUILEDIR/lib/pkgconfig:$PKG_CONFIG_PATH
+guile_prefix=/opt/local
+
 GUILE_LOAD_PATH=`pwd`/..:$GUILE_LOAD_PATH
-export PATH PKG_CONFIG_PATH GUILE_LOAD_PATh
-guild compile world.scm
-guild freeze -s -i world.scm
-exit 0
+export GUILE_LOAD_PATH
+
+guild freeze -b -s -X world.scm
+
+# I must do by hand becuase (system xxx) does not inherit environment.
 gcc -g -o world \
 	`pkg-config --cflags guile-3.0` \
 	world.c world.xd/*.o \
-	-Xlinker --rpath=$GUILEDIR/lib \
+	-Xlinker -rpath=$guile_prefix/lib \
 	`pkg-config --libs guile-3.0`
+
+# --- last line ---

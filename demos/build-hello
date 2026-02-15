@@ -1,3 +1,11 @@
 #!/bin/sh
-gcc -o hello `pkg-config --cflags guile-3.0` hello.c \
-   hello.xd/*.o `pkg-config --libs guile-3.0`
+
+GUILE_LOAD_PATH=`pwd`/..:$GUILE_LOAD_PATH
+export GUILE_LOAD_PATH
+
+guild freeze hello.scm
+
+#gcc -o hello `pkg-config --cflags guile-3.0` hello.c \
+#   hello.xd/*.o `pkg-config --libs guile-3.0`
+
+# --- last line ---
