@@ -1,52 +1,43 @@
-# guile-freezer
+# guile-freezer - a work in progress
+
 Guile-freezer is a guild script to convert a script and dependent modules 
 to objects to link into a C program linked with libguile.
 
 Usage:
 ```
-  $ guild freeze myscript.scm
-  $ gcc -o myscript `pkg-config --cflags guile-3.0` myscript.c myscript.xd/*.o \
-                    `pkg-config --libs guile-3.0`
-  $ ./myscript
+  $ guild freeze [options] [files]
+```
+Where options are
+* `-b`, `--inc-system` : include any needed system .go files
+* `-s`, `--add-shell`  : execute repl-shell in the program
+* `-X`, `--no-compile` : don't try to compile and load the program
+
+For the `-b` option to work your guile must be built with the included
+patch.  This allows the program to boot using the loaded boot-9.go file.
+
+# Examples
+```
+  $ cd demos
+  $ guild freeze -b -s world.scm
 ```
 
-`myscript.c` will load .go's from the objects you see in `myscript.xd`.
-The default behavior of the freezer is to not include Guile native .gos.
-To add these, one would use the `-s` flag, as:
-
-```
-  $ guild freeze -s myscript.scm
-```
-
-(The above statement is not quite right.  It will not include boot-9 deps.
-This needs to be fixed.)
-
-But this does not work.  Ideally one would be able to generate a
-single binary with no other dependencies.  However, libguile loads
-several system .go files (e.g., boot-9.go) during initialization,
-which, by default, are not loaded in the binary genrated with the
-freezer.  The flag to include these is `-s`.  However, this does not
-work.  Feel free to dig into the guile sources (e.g., libguile/init.c)
-to figure out how to make that work.  Following that, one might want
-to discover how to link libguile statically.  This is all work to go.
+The above will generate a `world.c` main program file and a number
+of object files: one for each .go files used in the program.  The .o
+files provide in-memory copies of the associated .go files so that
+modules may be loaded using `scm_load_thunk_from_memory`.
 
 # Notes
 
 + This is in development: alpha release
 + Only x86_64: if you want others check Omap and Bmap in freeze.scm
 
-## usage
+## hand compile
 ```
-$ guild freeze myscript.scm
-$ gcc -o myscript `pkg-config --cflags guile-3.0` myscript.c myscript.xd/*.o \
-                  `pkg-config --libs guile-3.0` 
+$ guild freeze -b -s -X world.scm
+$ gcc -o world `pkg-config --cflags guile-3.0` world.c world.xd/*.o \
+               `pkg-config --libs guile-3.0` 
 ```
 
-## install example, if your install is in /usr/local/
-```
-  # sudo mkdir -p /usr/local/share/guile/site/scripts
-  # sudo cp scripts/freeze.scm /usr/local/share/guile/site/scripts/
-```
 
 
 
