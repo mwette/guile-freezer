@@ -63,9 +63,9 @@
   (simple-format #t "Usage: guild freeze [OPTIONS] FILE ...
 Generate a frozen script.
 
-  -b, --include-sys     include base system files
+  -b, --include-sys     include base system files (NOT WORKING)
   -s, --add-shell       generate repl shell
-  -X, --no-compile      don't try to compile & load the program
+  -x, --compile         try to compile & load the program
   -h, --help            print this help message
   --version             print version number
 
@@ -85,9 +85,9 @@ Note that license restrictions may apply.
    (option '(#\s "add-shell") #f #f
            (lambda (opt name arg opts)
              (acons 'add-shell #t opts)))
-   (option '(#\X "no-compile") #f #f
+   (option '(#\x "compile") #f #f
            (lambda (opt name arg opts)
-             (acons 'no-compile #t opts)))
+             (acons 'compile #t opts)))
    (option '("version") #f #f
            (lambda (opt name arg opts)
              (show-version) (exit 0)))
@@ -109,9 +109,15 @@ Note that license restrictions may apply.
 (define instccachedir (assq-ref %guile-build-info 'ccachedir))
 (define userccachedir %compile-fallback-path)
 
+(define startup-modules
+  '((ice-9 boot-9) (ice-9 psyntax-pp)))
+(define startup-paths
+  '("ice-9/boot-9.scm" "ice-9/psyntax-pp.scm"))
+
 (define ignore-me
   '((system syntax internal)
     (compile compile-file)
+    (ice-9 syntax)
     (ice-9 ports internal)
     (guile-user)))
 
@@ -225,7 +231,7 @@ Note that license restrictions may apply.
 (define* (find-gos files #:optional (options '()))
   (let* (
          ;; collect the startup files 
-         (bootd (get-dict '((ice-9 boot-9))))
+         (bootd (get-dict startup-modules))
          (bootl (apply lset-union equal? bootd))
          (bootseq (reverse (tsort bootd bootl)))
          ;;
@@ -361,7 +367,9 @@ static SCM zcm_c_pointer_to_bytevector(void *pointer, size_t size) {
   (let* ((script (assq-ref options 'script))
          (name (assq-ref options 'name))
          (sport (open-output-file (string-append name ".c")))
-         (boot9-pair (assoc "ice-9/boot-9.scm" xpairs))
+         ;;(boot9-pair (assoc "ice-9/boot-9.scm" xpairs))
+         (startup-pairs (filter (lambda (pair) (member (car pair) startup-paths))
+                                xpairs))
          (script-pair (assoc script xpairs)))
     (simple-format sport "/* ~a.c\n */\n" name)
     (display file-header sport)
@@ -382,7 +390,7 @@ static SCM zcm_c_pointer_to_bytevector(void *pointer, size_t size) {
     (for-each
      (lambda (xpair)
        (let ((ref (car xpair)) (xbase (cdr xpair)))
-         (unless (member ref (list script "ice-9/boot-9.scm"))
+         (unless (member ref (cons script startup-paths))
            (simple-format sport "  /* ~a */\n" ref)
            (display (gen-ptr+end xbase) sport)
            (display load-calls sport))))
@@ -396,10 +404,13 @@ static SCM zcm_c_pointer_to_bytevector(void *pointer, size_t size) {
     (when (assq-ref options 'include-sys)
       (format sport "static void load_boot9() {\n")
       (display load-header sport)
-      (let ((ref (car boot9-pair)) (xbase (cdr boot9-pair)))
-        (simple-format sport "  /* ~a */\n" ref)
-        (display (gen-ptr+end xbase) sport)
-        (display load-calls sport))
+      (for-each
+       (lambda (xpair)
+         (let ((ref (car xpair)) (xbase (cdr xpair)))
+           (simple-format sport "  /* ~a */\n" ref)
+           (display (gen-ptr+end xbase) sport)
+           (display load-calls sport)))
+       startup-pairs)
       (display "  return;\n}\n\n" sport))
     ;;
     (display "static void local_main(void *data, int argc, char **argv) {\n"
@@ -445,7 +456,7 @@ static SCM zcm_c_pointer_to_bytevector(void *pointer, size_t size) {
      (lambda (file) (compile-file file #:from 'scheme #:to 'bytecode))
      files)
     (gen-ci (gen-xos (find-gos files opts) opts) opts)
-    (unless (assq-ref opts 'no-compile)
+    (when (assq-ref opts 'compile)
       (system (apply format #f compile-format name name name '())))
     0))
 

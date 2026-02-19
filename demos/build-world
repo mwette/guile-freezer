@@ -1,17 +1,20 @@
 #!/bin/sh
 
+echo "NOT WORKING"
+exit 1
+
 guile_prefix=/opt/local
+CFLAGS=`pkg-config --cflags guile-3.0`
+LIBS=`pkg-config --libs guile-3.0`
+LIBS="-Xlinker --rpath=$guile_prefix/lib $LIBS"
 
 GUILE_LOAD_PATH=`pwd`/..:$GUILE_LOAD_PATH
 export GUILE_LOAD_PATH
 
-guild freeze -b -s -X world.scm
+
+guild freeze -b -s world.scm
 
 # I must do by hand becuase (system xxx) does not inherit environment.
-gcc -g -o world \
-	`pkg-config --cflags guile-3.0` \
-	world.c world.xd/*.o \
-	-Xlinker -rpath=$guile_prefix/lib \
-	`pkg-config --libs guile-3.0`
+gcc -g -o world $CFLAGS world.c world.xd/*.o $LIBS
 
 # --- last line ---

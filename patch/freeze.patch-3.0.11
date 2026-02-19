@@ -1,33 +1,58 @@
 --- libguile/init.h-orig	2026-02-12 13:23:05.664220902 -0800
-+++ libguile/init.h	2026-02-12 13:23:35.052596822 -0800
++++ libguile/init.h	2026-02-19 07:47:30.312845052 -0800
 @@ -39,5 +39,6 @@
  SCM_INTERNAL void scm_i_init_guile (void *base);
  
  SCM_API void scm_load_startup_files (void);
-+SCM_API void scm_load_startup_using (void (*)(void));
++SCM_API void scm_load_startup_using (void (*loader) (void));
  
  #endif  /* SCM_INIT_H */
 --- libguile/init.c-orig	2026-01-27 19:41:13.565073877 -0800
-+++ libguile/init.c	2026-02-12 14:25:08.170989149 -0800
-@@ -350,6 +350,12 @@
-   scm_with_guile (really_cleanup_for_exit, NULL);
- }
++++ libguile/init.c	2026-02-19 07:18:33.167241850 -0800
+@@ -211,23 +211,34 @@
+    loaded into dumped guile executables.  */
+ int scm_ice_9_already_loaded = 0;
  
-+static void (*load_startup_files)(void) =  scm_load_startup_files;
++static void (*custom_startup_loader) (void) = NULL;
 +
-+SCM_API void scm_load_startup_using(void (*loader)(void)) {
-+  load_startup_files = loader;
++SCM_API void scm_load_startup_using (void (*loader)(void)) {
++  custom_startup_loader = loader;
 +}
 +
  void
- scm_i_init_guile (void *base)
+ scm_load_startup_files ()
  {
-@@ -504,7 +510,7 @@
-   scm_init_extensions ();
+-  /* We want a path only containing directories from GUILE_LOAD_PATH,
+-     SCM_SITE_DIR and SCM_LIBRARY_DIR when searching for the site init
+-     file, so we do this before loading Ice-9.  */
+-  SCM init_path =
+-    scm_sys_search_load_path (scm_from_utf8_string ("init.scm"));
+-
+-  /* Load Ice-9.  */
+   if (!scm_ice_9_already_loaded)
+     {
+-      scm_c_primitive_load_path ("ice-9/boot-9");
+-
+-      /* Load the init.scm file.  */
+-      if (scm_is_true (init_path))
+-	scm_primitive_load (init_path);
++      if (custom_startup_loader == NULL)
++	{
++	  /* We want a path only containing directories from GUILE_LOAD_PATH,
++	     SCM_SITE_DIR and SCM_LIBRARY_DIR when searching for the site init
++	     file, so we do this before loading Ice-9.  */
++	  SCM init_path =
++	    scm_sys_search_load_path (scm_from_utf8_string ("init.scm"));
++	  /* Load Ice-9.  */
++	  scm_c_primitive_load_path ("ice-9/boot-9");
++	  /* Load the init.scm file.  */
++	  if (scm_is_true (init_path))
++	    scm_primitive_load (init_path);
++	}
++      else
++	{
++	  (*custom_startup_loader) ();
++	}
+     }
+ }
  
-   atexit (cleanup_for_exit);
--  scm_load_startup_files ();
-+  (*load_startup_files)();
-   scm_init_load_should_auto_compile ();
- 
-   /* Capture the dynamic state after loading boot-9, so that new threads end up
