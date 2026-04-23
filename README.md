@@ -18,7 +18,8 @@ patch.  This allows the program to boot using the loaded boot-9.go file.
 # Examples
 ```
   $ cd demos
-  $ guild freeze -b -s world.scm
+  $ ./build-world
+  $ ./world
 ```
 
 The above will generate a `world.c` main program file and a number

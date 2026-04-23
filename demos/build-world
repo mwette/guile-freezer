@@ -1,11 +1,10 @@
 #!/bin/sh
 
-echo "NOT WORKING"
-exit 1
+guile_prefix=/opt/guile-rel/3.0.11-fzr
 
-guile_prefix=/opt/local
-CFLAGS=`pkg-config --cflags guile-3.0`
-LIBS=`pkg-config --libs guile-3.0`
+PATH=$guile_prefix/bin:$PATH
+CFLAGS=-I$guile_prefix/include/guile/3.0
+LIBS="-L$guile_prefix/lib -lguile-3.0 -lgc -lpthread -ldl"
 LIBS="-Xlinker --rpath=$guile_prefix/lib $LIBS"
 
 GUILE_LOAD_PATH=`pwd`/..:$GUILE_LOAD_PATH
@@ -14,7 +13,6 @@ export GUILE_LOAD_PATH
 
 guild freeze -b -s world.scm
 
-# I must do by hand becuase (system xxx) does not inherit environment.
 gcc -g -o world $CFLAGS world.c world.xd/*.o $LIBS
 
 # --- last line ---

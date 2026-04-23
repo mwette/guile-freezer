@@ -110,9 +110,20 @@ Note that license restrictions may apply.
 (define userccachedir %compile-fallback-path)
 
 (define startup-modules
-  '((ice-9 boot-9) (ice-9 psyntax-pp)))
+  '((ice-9 boot-9-A)
+    (ice-9 psyntax-pp)
+    (ice-9 boot-9-B)
+    (ice-9 posix)
+    (ice-9 boot-9-C)
+    ))
+;; The following need to be in order!
 (define startup-paths
-  '("ice-9/boot-9.scm" "ice-9/psyntax-pp.scm"))
+  '("ice-9/boot-9-A.scm"
+    "ice-9/psyntax-pp.scm"
+    "ice-9/boot-9-B.scm"
+    "ice-9/posix.scm"
+    "ice-9/boot-9-C.scm"
+    ))
 
 (define ignore-me
   '((system syntax internal)
@@ -367,9 +378,7 @@ static SCM zcm_c_pointer_to_bytevector(void *pointer, size_t size) {
   (let* ((script (assq-ref options 'script))
          (name (assq-ref options 'name))
          (sport (open-output-file (string-append name ".c")))
-         ;;(boot9-pair (assoc "ice-9/boot-9.scm" xpairs))
-         (startup-pairs (filter (lambda (pair) (member (car pair) startup-paths))
-                                xpairs))
+         (startup-pairs (map (lambda (path) (assoc path xpairs)) startup-paths))
          (script-pair (assoc script xpairs)))
     (simple-format sport "/* ~a.c\n */\n" name)
     (display file-header sport)
